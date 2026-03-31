@@ -126,6 +126,19 @@ def desfazer_venda(produto_id):
         st.error(f"Erro ao desfazer venda: {e}")
         return False
 
+def remover_produto(produto_id):
+    """Remove um produto permanentemente do catálogo"""
+    data_path = get_data_path()
+    try:
+        with open(data_path, 'r', encoding='utf-8-sig') as f:
+            produtos = json.load(f)
+        produtos = [p for p in produtos if p.get('id') != produto_id]
+        salvar_dados(produtos)
+        return True
+    except Exception as e:
+        st.error(f"Erro ao remover produto: {e}")
+        return False
+
 @st.cache_data(ttl=5)  # Cache por 5 segundos, atualiza automaticamente
 def carregar_dados():
     """Carrega dados com fallback para múltiplos caminhos"""
@@ -361,7 +374,17 @@ else:
                     
                     st.markdown(f"**Vendido por:** R$ {produto.get('preco_venda', 0):.0f}")
                     st.markdown(f"**Data:** {produto.get('data_venda', 'N/A')}")
-                else:
+                
+                # Botão remover (disponível para vendidos e não vendidos)
+                with st.expander("🗑️ Remover produto"):
+                    st.warning("⚠️ Esta ação é permanente!")
+                    if st.button("Confirmar remoção", key=f"del_{produto_id}", type="primary"):
+                        if remover_produto(produto_id):
+                            st.success("Produto removido!")
+                            st.cache_data.clear()
+                            st.rerun()
+                
+                if not is_sold:
                     # Formulário para registrar venda
                     with st.form(key=f"venda_{produto_id}", clear_on_submit=True):
                         st.markdown("**Registrar Venda:**")
