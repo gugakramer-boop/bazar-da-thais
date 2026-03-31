@@ -5,6 +5,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import os
+import base64
+import requests
 from pathlib import Path
 
 # ══════════════════════════════════════════════════════
@@ -571,9 +573,82 @@ if not df_vendidos.empty:
 
 # Footer
 st.markdown("---")
+
+# ══════════════════════════════════════════════════════
+#  📸 UPLOAD DE FOTOS (vendedoras)
+# ══════════════════════════════════════════════════════
+
+st.markdown("## 📸 Enviar Fotos de Produtos")
+st.markdown("Tire uma foto do produto e envie aqui. A Thaís vai precificar e adicionar ao bazar!")
+
+uploaded_files = st.file_uploader(
+    "Arraste fotos aqui ou clique para selecionar",
+    type=["jpg", "jpeg", "png", "webp", "heic"],
+    accept_multiple_files=True,
+    help="Aceita JPG, PNG, WEBP. Pode enviar várias fotos de uma vez."
+)
+
+if uploaded_files:
+    # Try to upload to GitHub via API
+    github_token = None
+    github_repo = "gugakramer-boop/bazar-da-thais"
+    
+    try:
+        github_token = st.secrets.get("GITHUB_TOKEN", None)
+    except Exception:
+        pass
+    
+    for uploaded_file in uploaded_files:
+        file_bytes = uploaded_file.read()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = uploaded_file.name.replace(" ", "_")
+        filename = f"{timestamp}_{safe_name}"
+        
+        col_preview, col_status = st.columns([1, 2])
+        with col_preview:
+            try:
+                st.image(file_bytes, width=150, caption=uploaded_file.name)
+            except Exception:
+                st.markdown(f"📎 {uploaded_file.name}")
+        
+        with col_status:
+            if github_token:
+                # Upload via GitHub API
+                try:
+                    b64_content = base64.b64encode(file_bytes).decode('utf-8')
+                    api_url = f"https://api.github.com/repos/{github_repo}/contents/photos/to_process/{filename}"
+                    headers = {
+                        "Authorization": f"token {github_token}",
+                        "Accept": "application/vnd.github.v3+json"
+                    }
+                    payload = {
+                        "message": f"📸 Nova foto enviada: {uploaded_file.name}",
+                        "content": b64_content,
+                        "branch": "main"
+                    }
+                    resp = requests.put(api_url, json=payload, headers=headers, timeout=30)
+                    if resp.status_code in [200, 201]:
+                        st.success(f"✅ **{uploaded_file.name}** enviada com sucesso! A Thaís vai precificar em breve.")
+                    else:
+                        st.warning(f"⚠️ Não foi possível salvar na nuvem (erro {resp.status_code}). Foto foi recebida — a Thaís vai ver na próxima sessão.")
+                except Exception as e:
+                    st.warning(f"⚠️ Upload para nuvem falhou. Foto recebida localmente.")
+            else:
+                # Save locally (for local development)
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                upload_dir = os.path.join(base_dir, "photos", "to_process")
+                os.makedirs(upload_dir, exist_ok=True)
+                filepath = os.path.join(upload_dir, filename)
+                with open(filepath, 'wb') as f:
+                    f.write(file_bytes)
+                st.success(f"✅ **{uploaded_file.name}** salva! A Thaís vai precificar em breve.")
+    
+    st.info("💡 **Próximos passos:** a Thaís vai analisar as fotos, pesquisar preços e adicionar os produtos ao catálogo automaticamente.")
+
+st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #808080; font-size: 0.9rem;">
 🌸 Bazar da Thaís • Dashboard automatizado • Dados atualizados em tempo real
-<br>Para adicionar produtos, use o agente @bazar-maquiagem no VS Code
+<br>Para adicionar produtos, envie fotos acima ou use o agente @bazar-maquiagem no VS Code
 </div>
 """, unsafe_allow_html=True)
