@@ -321,7 +321,35 @@ else:
                 data_venda = produto.get('data_venda', '')
                 st.markdown(f'<div class="sold-badge">✅ VENDIDO por R$ {preco_venda:.0f} em {data_venda}</div>', unsafe_allow_html=True)
             
-            col_info, col_precos, col_acao = st.columns([3, 2, 1.2])
+            # Layout com imagem
+            img_url = str(produto.get('imagem_url', '')).strip()
+            src_img = str(produto.get('source_image', '')).strip()
+            has_image = False
+            image_path = None
+            
+            if img_url:
+                has_image = True
+                image_path = img_url
+            elif src_img:
+                # Tentar encontrar foto local em photos/processed/
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                for folder in ['photos/processed', 'photos/to_process', 'photos']:
+                    candidate = os.path.join(base_dir, folder, src_img)
+                    if os.path.exists(candidate):
+                        has_image = True
+                        image_path = candidate
+                        break
+            
+            if has_image:
+                col_img, col_info, col_precos, col_acao = st.columns([1, 2.5, 2, 1.2])
+                with col_img:
+                    try:
+                        st.image(image_path, width=140)
+                    except Exception:
+                        st.markdown("📷 *Imagem indisponível*")
+            else:
+                col_img = None
+                col_info, col_precos, col_acao = st.columns([3, 2, 1.2])
             
             with col_info:
                 titulo = f"### {produto['marca']} — {produto['produto']}"
