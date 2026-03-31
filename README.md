@@ -1,35 +1,115 @@
-# 💄 Bazar da Thaís — Dashboard de Precificação
+# 💄 Bazar da Thaís — Sistema Completo de Precificação
 
-Sistema de precificação inteligente para revenda de maquiagens, criado para a maquiadora Thaís.
+Sistema inteligente de precificação para revenda de maquiagens, com processamento automático de fotos.
 
 ## 🌟 Funcionalidades
 
-- **📸 Identificação de Produtos**: Análise automática de fotos de maquiagem
-- **🔍 Pesquisa de Mercado**: Consulta em 14+ lojas brasileiras especializadas  
-- **💰 Precificação Inteligente**: Algoritmo com ajustes por marca, tipo e condição do produto
-- **📊 Dashboard em Tempo Real**: Interface web com atualizações automáticas
-- **📱 Mobile-Friendly**: Acesso otimizado para celular e tablet
+- **📸 Drag & Drop Processing**: Arraste fotos e processamento automático  
+- **🎯 Multi-Product Detection**: Detecta TODOS os produtos em cada foto
+- **🤖 AI Vision Enhanced**: Identifica marca, produto, cor e condição
+- **🔍 Market Research**: Consulta automática em 14+ lojas brasileiras
+- **💰 Smart Pricing**: 4 faixas de preço com ajustes por marca/risco
+- **📊 Real-time Dashboard**: Interface web com atualizações automáticas
+- **📱 Mobile-Ready**: Acesso otimizado para todos os dispositivos
 
-## 🚀 Acesso
+## 🚀 Quick Start
 
 ### 🌐 **Dashboard Público**
-👉 **[Acesse o Dashboard Online](https://share.streamlit.io)** (após deploy)
+👉 **[Acesse Online](https://bazar-da-thais.streamlit.app)** (24/7 disponível)
 
-### 💻 **Uso Local**
+### 💻 **Modo Local**
 ```bash
-# Opção 1: Duplo clique
-iniciar_dashboard.bat
+# Iniciar dashboard local
+./scripts/start.bat
 
-# Opção 2: Terminal  
-streamlit run app_bazar.py --server.port 8501
+# Ou manual:
+streamlit run src/app.py --server.port 8501
 ```
-🌐 **Dashboard local:** http://localhost:8501
+🌐 **URL local:** http://localhost:8501
 
-## 📈 Como Usar
+## 📁 Estrutura do Projeto
 
-### 1. **Adicionar Produtos**
+```
+bazar-da-thais/
+├── 📸 photos/              # Drop fotos aqui!
+│   ├── to_process/         # Fotos para analisar
+│   ├── processed/          # Fotos já analisadas
+│   └── failed/             # Fotos com erro
+├── 🤖 agents/              # VS Code AI agents
+├── 📊 src/                 # Dashboard e scripts
+├── 💾 data/                # Base de dados
+├── 📄 docs/                # Documentação
+└── 🛠️ scripts/             # Utilitários
+```
 
-Use o agente no VS Code:
+## 🎯 Como Usar
+
+### 1. **📸 Método Automático (Recomendado)**
+
+**Arraste fotos para:** `photos/to_process/`
+- ✅ Processamento automático a cada 30 segundos
+- ✅ Identificação de marca, produto e cor
+- ✅ Pesquisa de preços em tempo real
+- ✅ Adição automática ao dashboard
+
+### 2. **🤖 Método Manual (VS Code Agent)**
+
+Use o agente do VS Code para análise individual:
+- `@auto-processing` - Automatic photo processing 
+- `@manual-processing` - Individual photo analysis
+
+## 🏷️ Metodologia de Preços
+
+Sistema aplica descontos baseados na condição:
+- **Nunca usado**: 25% abaixo do menor preço de mercado
+- **25% usado**: 40% abaixo da mediana
+- **50% usado**: 55% abaixo da mediana  
+- **75% usado**: 70% abaixo da mediana
+
+### Ajustes Automáticos
+- **Marca Premium**: -3% a -8% (mantém mais valor)
+- **Alto Risco Sanitário**: -15% a -20% (batom, máscara)
+- **Produto Lacrado**: +5% (garantia de integridade)
+- **Edição Limitada**: +5% a +10% (escassez)
+
+## 🛠️ Tecnologia
+
+- **Backend**: Python + Streamlit  
+- **AI Agents**: VS Code Copilot (2 agents especializados)
+- **Data**: JSON com encoding UTF-8-sig
+- **Vision AI**: Identificação automática por foto
+- **Market Research**: 14+ lojas brasileiras
+- **Deploy**: Streamlit Community Cloud
+
+## 📊 Dashboard KPIs
+
+- Total de produtos catalogados
+- Valor total do estoque  
+- Ticket médio por condição
+- Distribuição por marca
+- Performance de vendas em tempo real
+
+## 📁 Estrutura Organizada
+
+```
+📁 bazar-da-thais/
+├── 📸 photos/to_process/     # Drop photos here!
+├── 🤖 agents/               # VS Code AI agents  
+├── 📊 src/app.py           # Dashboard
+├── 💾 data/                # Database & logs
+├── 📚 docs/                # Documentation  
+└── 🛠️ scripts/start.bat    # Main launcher
+```
+
+## 🚀 Início Rápido
+
+### 🎮 **Método Completo**
+```bash
+1. Execute: scripts/start.bat  
+2. Opção: 4 (Sistema Completo)
+3. Arraste fotos: photos/to_process/  
+4. Acesse: http://localhost:8501
+```
 - Digite `@bazar-maquiagem` no chat
 - Envie foto da maquiagem
 - Agente pesquisa preços automaticamente

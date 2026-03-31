@@ -73,15 +73,13 @@ st.markdown("""
 # ── Funções de dados ──
 def get_data_path():
     """Retorna o caminho do arquivo de dados"""
-    # Try data/ subfolder first (organized structure)
-    data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "produtos_bazar.json")
+    data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "produtos_bazar.json")
     if os.path.exists(data_path):
         return data_path
-    # Fallback to root (Streamlit Cloud / legacy)
-    old_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "produtos_bazar.json")
+    old_path = os.path.join(os.path.dirname(__file__), "produtos_bazar.json")
     if os.path.exists(old_path):
         return old_path
-    return old_path  # Default to root for cloud
+    return data_path
 
 def salvar_dados(produtos_list):
     """Salva dados atualizados no JSON"""
@@ -128,48 +126,47 @@ def desfazer_venda(produto_id):
 
 @st.cache_data(ttl=5)  # Cache por 5 segundos, atualiza automaticamente
 def carregar_dados():
-    """Carrega dados com fallback para múltiplos caminhos"""
-    # Try data/ subfolder first (organized structure)
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    paths_to_try = [
-        os.path.join(base_dir, "data", "produtos_bazar.json"),
-        os.path.join(base_dir, "produtos_bazar.json"),
-    ]
+    """Carrega dados com novo sistema de pastas organizadas"""
+    # Tentar primeiro a nova estrutura organizada
+    data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "produtos_bazar.json")
     
-    for path in paths_to_try:
+    try:
+        with open(data_path, 'r', encoding='utf-8-sig') as f:
+            produtos = json.load(f)
+        return pd.DataFrame(produtos) if produtos else pd.DataFrame()
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Fallback para estrutura antiga (compatibilidade)
+        old_path = os.path.join(os.path.dirname(__file__), "produtos_bazar.json")
         try:
-            with open(path, 'r', encoding='utf-8-sig') as f:
+            with open(old_path, 'r', encoding='utf-8-sig') as f:
                 produtos = json.load(f)
-            if produtos:
-                return pd.DataFrame(produtos)
+            return pd.DataFrame(produtos) if produtos else pd.DataFrame()
         except (FileNotFoundError, json.JSONDecodeError):
-            continue
-    
-    # Se não encontrar, dados de exemplo
-    exemplo_dados = [
-        {
-            "id": 1,
-            "marca": "Tarte Cosmetics",
-            "produto": "Shape Tape Contour Concealer",
-            "cor_tom": "22S Light Medium Sand",
-            "tipo": "Corretivo",
-            "volume": "10ml",
-            "categoria_risco": "Normal",
-            "preco_min": 165.00,
-            "preco_max": 189.00,
-            "preco_medio": 178.00,
-            "mediana": 179.00,
-            "fontes": 5,
-            "data_pesquisa": "2026-03-27",
-            "ajuste_categoria": -0.08,
-            "nunca_usado": 113.85,
-            "usado_25": 107.40,
-            "usado_50": 80.55,
-            "usado_75": 53.70,
-            "observacoes": "Produto de demonstração - Tarte premium"
-        }
-    ]
-    return pd.DataFrame(exemplo_dados)
+            # Se não encontrar, criar com dados de exemplo
+            exemplo_dados = [
+                {
+                    "id": 1,
+                    "marca": "Tarte Cosmetics",
+                    "produto": "Shape Tape Contour Concealer",
+                    "cor_tom": "22S Light Medium Sand",
+                    "tipo": "Corretivo",
+                    "volume": "10ml",
+                    "categoria_risco": "Normal",
+                    "preco_min": 165.00,
+                    "preco_max": 189.00,
+                    "preco_medio": 178.00,
+                    "mediana": 179.00,
+                    "fontes": 5,
+                    "data_pesquisa": "2026-03-27",
+                    "ajuste_categoria": -0.08,
+                    "nunca_usado": 113.85,
+                    "usado_25": 107.40,
+                    "usado_50": 80.55,
+                    "usado_75": 53.70,
+                    "observacoes": "Produto de demonstração - Tarte premium"
+                }
+            ]
+            return pd.DataFrame(exemplo_dados)
     
 # ── Header ──
 st.markdown('<h1 class="main-title">🌸 Bazar da Thaís</h1>', unsafe_allow_html=True)
