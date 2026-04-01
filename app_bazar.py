@@ -575,11 +575,155 @@ if not df_vendidos.empty:
 st.markdown("---")
 
 # ══════════════════════════════════════════════════════
-#  📸 UPLOAD DE FOTOS (vendedoras)
+#  📸 UPLOAD + PROCESSAMENTO AUTOMÁTICO
 # ══════════════════════════════════════════════════════
 
 st.markdown("## 📸 Enviar Fotos de Produtos")
-st.markdown("Tire uma foto do produto e envie aqui. A Thaís vai precificar e adicionar ao bazar!")
+st.markdown("Tire uma foto do produto e envie aqui — o sistema identifica e precifica automaticamente!")
+
+def identificar_produto_ia(image_bytes):
+    """Usa GPT-4 Vision para identificar o produto na foto"""
+    try:
+        openai_key = st.secrets.get("OPENAI_API_KEY", None)
+    except Exception:
+        openai_key = None
+    
+    if not openai_key:
+        return None
+    
+    from openai import OpenAI
+    client = OpenAI(api_key=openai_key)
+    
+    b64_img = base64.b64encode(image_bytes).decode('utf-8')
+    
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": """Você é um especialista em identificação de produtos de maquiagem e beleza.
+Analise a foto e retorne um JSON com as informações do produto.
+IMPORTANTE: retorne APENAS o JSON, sem markdown, sem ```json, sem explicações.
+Se houver múltiplos produtos, retorne uma lista JSON.
+Se não conseguir identificar, retorne {"erro": "motivo"}.
+
+Formato para cada produto:
+{
+  "marca": "Nome da Marca",
+  "produto": "Nome completo do produto",
+  "cor_tom": "Cor ou tonalidade se visível",
+  "tipo": "Base|Corretivo|Paleta de Sombras|Batom|Blush|Bronzer|Primer|Máscara|Delineador|Pó|Iluminador|Pigmento|Outro",
+  "volume": "quantidade com unidade (ml, g, oz)",
+  "confianca": 85,
+  "categoria_marca": "ultra_premium|premium|mid|drugstore|nacional",
+  "vendida_no_brasil": true,
+  "preco_estimado_brl": 250.0,
+  "observacoes": "detalhes relevantes"
+}"""
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Identifique este produto de beleza/maquiagem. Informe a marca, nome, tipo, cor e estime o preço em Reais (R$) para o mercado brasileiro."},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}", "detail": "high"}}
+                ]
+            }
+        ],
+        max_tokens=1500,
+        temperature=0.2
+    )
+    
+    raw = response.choices[0].message.content.strip()
+    # Clean markdown wrapping if present
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+    
+    result = json.loads(raw)
+    # Normalize to list
+    if isinstance(result, dict):
+        if "erro" in result:
+            return None
+        result = [result]
+    return result
+
+def calcular_precos_bazar(preco_base, categoria_marca, tipo, vendida_br):
+    """Calcula os 4 preços do bazar usando as regras de precificação"""
+    # Ajuste de marca
+    brand_adj_map = {"ultra_premium": -0.05, "premium": -0.03, "mid": 0.0, "drugstore": 0.05, "nacional": 0.0}
+    brand_adj = brand_adj_map.get(categoria_marca, 0.0)
+    
+    # Ajuste de risco por tipo
+    high_risk = ["Batom", "Gloss", "Máscara", "Delineador", "Paleta de Batons"]
+    medium_risk = ["Base", "Corretivo", "Primer", "Pigmento", "BB Cream", "CC Cream"]
+    if tipo in high_risk:
+        risk_adj = -0.18
+    elif tipo in medium_risk:
+        risk_adj = -0.05
+    else:
+        risk_adj = 0.0
+    
+    # Prêmio de escassez para produtos não vendidos no BR
+    if not vendida_br:
+        preco_base = preco_base * 1.15
+    
+    total_adj = brand_adj + risk_adj
+    min_price = preco_base * 0.85  # estimativa de menor preço
+    median = preco_base
+    
+    return {
+        "preco_min": round(min_price, 2),
+        "preco_max": round(preco_base * 1.15, 2),
+        "preco_medio": round(preco_base, 2),
+        "mediana": round(median, 2),
+        "nunca_usado": round(max(min_price * 0.75 * (1 + total_adj), 5.0), 2),
+        "usado_25": round(max(median * 0.60 * (1 + total_adj), 5.0), 2),
+        "usado_50": round(max(median * 0.45 * (1 + total_adj), 5.0), 2),
+        "usado_75": round(max(median * 0.30 * (1 + total_adj), 5.0), 2),
+        "ajuste_categoria": round(brand_adj, 2),
+    }
+
+def adicionar_produto_db(produto_info, precos, source_image=""):
+    """Adiciona produto ao banco de dados JSON"""
+    data_path = get_data_path()
+    try:
+        with open(data_path, 'r', encoding='utf-8-sig') as f:
+            produtos = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        produtos = []
+    
+    next_id = max([p.get('id', 0) for p in produtos], default=0) + 1
+    
+    vendida_br = produto_info.get('vendida_no_brasil', True)
+    
+    novo = {
+        "id": next_id,
+        "marca": produto_info['marca'],
+        "produto": produto_info['produto'],
+        "cor_tom": produto_info.get('cor_tom', ''),
+        "tipo": produto_info.get('tipo', 'Outro'),
+        "volume": produto_info.get('volume', ''),
+        "categoria_risco": "high_risk" if precos['ajuste_categoria'] < -0.10 else ("medium_risk" if precos['ajuste_categoria'] < 0 else "low_risk"),
+        "preco_min": precos['preco_min'],
+        "preco_max": precos['preco_max'],
+        "preco_medio": precos['preco_medio'],
+        "mediana": precos['mediana'],
+        "fontes": 1,
+        "data_pesquisa": datetime.now().strftime("%Y-%m-%d"),
+        "ajuste_categoria": precos['ajuste_categoria'],
+        "nunca_usado": precos['nunca_usado'],
+        "usado_25": precos['usado_25'],
+        "usado_50": precos['usado_50'],
+        "usado_75": precos['usado_75'],
+        "observacoes": f"🤖 Auto: {produto_info.get('observacoes', '')} | {'🇧🇷 Vendido no BR' if vendida_br else '⚠️ Só importação +15%'} | Confiança IA: {produto_info.get('confianca', '?')}% | Cat: {produto_info.get('categoria_marca', '?')}",
+        "source_image": source_image,
+    }
+    
+    produtos.append(novo)
+    salvar_dados(produtos)
+    return next_id, novo
 
 uploaded_files = st.file_uploader(
     "Arraste fotos aqui ou clique para selecionar",
@@ -589,10 +733,8 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    # Try to upload to GitHub via API
     github_token = None
     github_repo = "gugakramer-boop/bazar-da-thais"
-    
     try:
         github_token = st.secrets.get("GITHUB_TOKEN", None)
     except Exception:
@@ -604,46 +746,84 @@ if uploaded_files:
         safe_name = uploaded_file.name.replace(" ", "_")
         filename = f"{timestamp}_{safe_name}"
         
-        col_preview, col_status = st.columns([1, 2])
+        st.markdown("---")
+        col_preview, col_result = st.columns([1, 3])
+        
         with col_preview:
             try:
-                st.image(file_bytes, width=150, caption=uploaded_file.name)
+                st.image(file_bytes, width=180, caption=uploaded_file.name)
             except Exception:
                 st.markdown(f"📎 {uploaded_file.name}")
         
-        with col_status:
-            if github_token:
-                # Upload via GitHub API
+        with col_result:
+            with st.spinner("🔍 Identificando produto com IA..."):
                 try:
-                    b64_content = base64.b64encode(file_bytes).decode('utf-8')
-                    api_url = f"https://api.github.com/repos/{github_repo}/contents/photos/to_process/{filename}"
-                    headers = {
-                        "Authorization": f"token {github_token}",
-                        "Accept": "application/vnd.github.v3+json"
-                    }
-                    payload = {
-                        "message": f"📸 Nova foto enviada: {uploaded_file.name}",
-                        "content": b64_content,
-                        "branch": "main"
-                    }
-                    resp = requests.put(api_url, json=payload, headers=headers, timeout=30)
-                    if resp.status_code in [200, 201]:
-                        st.success(f"✅ **{uploaded_file.name}** enviada com sucesso! A Thaís vai precificar em breve.")
-                    else:
-                        st.warning(f"⚠️ Não foi possível salvar na nuvem (erro {resp.status_code}). Foto foi recebida — a Thaís vai ver na próxima sessão.")
+                    produtos_detectados = identificar_produto_ia(file_bytes)
                 except Exception as e:
-                    st.warning(f"⚠️ Upload para nuvem falhou. Foto recebida localmente.")
+                    produtos_detectados = None
+                    st.error(f"Erro na identificação: {e}")
+            
+            if produtos_detectados:
+                for prod in produtos_detectados:
+                    marca = prod.get('marca', 'Desconhecida')
+                    nome = prod.get('produto', 'Produto não identificado')
+                    preco_est = prod.get('preco_estimado_brl', 100.0)
+                    confianca = prod.get('confianca', 0)
+                    cat = prod.get('categoria_marca', 'mid')
+                    tipo = prod.get('tipo', 'Outro')
+                    vendida_br = prod.get('vendida_no_brasil', True)
+                    
+                    st.markdown(f"### ✅ {marca} — {nome}")
+                    st.markdown(f"**Tipo:** {tipo} | **Cor:** {prod.get('cor_tom', 'N/A')} | **Confiança:** {confianca}%")
+                    
+                    if confianca >= 60:
+                        # Calcular preços
+                        precos = calcular_precos_bazar(preco_est, cat, tipo, vendida_br)
+                        
+                        col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+                        col_p1.metric("🟢 Nunca Usado", f"R$ {precos['nunca_usado']:.0f}")
+                        col_p2.metric("🟡 25% Usado", f"R$ {precos['usado_25']:.0f}")
+                        col_p3.metric("🟠 50% Usado", f"R$ {precos['usado_50']:.0f}")
+                        col_p4.metric("🔴 75% Usado", f"R$ {precos['usado_75']:.0f}")
+                        
+                        # Save to GitHub if token available
+                        if github_token:
+                            try:
+                                b64_content = base64.b64encode(file_bytes).decode('utf-8')
+                                api_url = f"https://api.github.com/repos/{github_repo}/contents/photos/processed/{filename}"
+                                headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+                                payload = {"message": f"📸 Auto: {marca} - {nome}", "content": b64_content, "branch": "main"}
+                                requests.put(api_url, json=payload, headers=headers, timeout=30)
+                            except Exception:
+                                pass
+                        
+                        # Adicionar ao banco
+                        prod_id, novo_prod = adicionar_produto_db(prod, precos, filename)
+                        st.success(f"🎉 **Produto #{prod_id}** adicionado ao catálogo automaticamente!")
+                        st.cache_data.clear()
+                    else:
+                        st.warning(f"⚠️ Confiança baixa ({confianca}%). Produto identificado como **{marca} — {nome}** mas precisa de revisão manual.")
+                        # Save photo for manual review
+                        if github_token:
+                            try:
+                                b64_content = base64.b64encode(file_bytes).decode('utf-8')
+                                api_url = f"https://api.github.com/repos/{github_repo}/contents/photos/to_process/{filename}"
+                                headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+                                payload = {"message": f"📸 Revisão: {uploaded_file.name}", "content": b64_content, "branch": "main"}
+                                requests.put(api_url, json=payload, headers=headers, timeout=30)
+                            except Exception:
+                                pass
             else:
-                # Save locally (for local development)
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                upload_dir = os.path.join(base_dir, "photos", "to_process")
-                os.makedirs(upload_dir, exist_ok=True)
-                filepath = os.path.join(upload_dir, filename)
-                with open(filepath, 'wb') as f:
-                    f.write(file_bytes)
-                st.success(f"✅ **{uploaded_file.name}** salva! A Thaís vai precificar em breve.")
-    
-    st.info("💡 **Próximos passos:** a Thaís vai analisar as fotos, pesquisar preços e adicionar os produtos ao catálogo automaticamente.")
+                st.warning("⚠️ Não consegui identificar o produto. Foto salva para revisão manual.")
+                if github_token:
+                    try:
+                        b64_content = base64.b64encode(file_bytes).decode('utf-8')
+                        api_url = f"https://api.github.com/repos/{github_repo}/contents/photos/to_process/{filename}"
+                        headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+                        payload = {"message": f"📸 Revisar: {uploaded_file.name}", "content": b64_content, "branch": "main"}
+                        requests.put(api_url, json=payload, headers=headers, timeout=30)
+                    except Exception:
+                        pass
 
 st.markdown("---")
 st.markdown("""
